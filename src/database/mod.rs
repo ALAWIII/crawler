@@ -1,6 +1,7 @@
 mod creation;
-mod doc_represent;
-mod migrating;
+mod doc_rank;
+mod doc_repr;
 mod quering;
 pub use creation::get_db_connection;
-pub use doc_represent::*;
+pub use doc_rank::*;
+pub use doc_repr::*;

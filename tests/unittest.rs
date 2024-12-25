@@ -1,22 +1,20 @@
-use crawler::get_db_connection;
-use crawler::CResult;
-use crawler::Config;
-use crawler::{fetch_pages, start_process, text_filter, valid_url_format, UrlData, UrlParsedData};
-use crawler::{Document, DocumentId, Invindex, InvindexId, ItemId};
+use crawler::{
+    fetch_pages, get_db_connection, start_process, text_filter, unify_docs, valid_url_format,
+    CResult, Config, Document, DocumentId, Invindex, InvindexId, ItemId, TermDocRecord,
+    TermDocRecordId, UrlData, UrlParsedData,
+};
 use dashmap::DashMap;
-
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-
 use reqwest::Url;
 use scraper::{Html, Selector};
-
+use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::{
     collections::HashSet,
+    rc::Rc,
     sync::{Arc, Mutex},
     time::Duration,
 };
-
 use tokio::sync::mpsc::channel;
 
 static URL: &str = "https://en.wikipedia.org/wiki/Alan_Turing";
@@ -410,14 +408,13 @@ async fn insert_base() -> CResult<()> {
     assert!(!value.is_err());
     Ok(())
 }
-
-#[tokio::test]
+//this for inserting records
 async fn upsert_base() -> CResult<()> {
     let id = InvindexId {
         term: Arc::new("term1".into()),
         doc_url: "https://flafel.net".into(),
     };
-    let mut entry = Invindex::new(id).location(vec![1, 2, 3, 4, 5]);
+    let mut entry = Invindex::new(id).location(vec![1, 2, 3, 4, 5, 7]);
     entry.doc_length(35);
 
     let value: surrealdb::Result<Vec<ItemId>> = get_db_connection()
@@ -425,8 +422,7 @@ async fn upsert_base() -> CResult<()> {
         .upsert("inv_index")
         .content(entry)
         .await;
-    dbg!(&value);
-    assert!(value.is_ok());
+    //assert!(value.is_ok());
     Ok(())
 }
 #[tokio::test]
@@ -443,13 +439,137 @@ async fn insert_url_doc() {
         .await;
     assert!(value.is_ok());
 }
+//--------------------------testing the deserilaization----------------
 #[tokio::test]
 async fn retrive_data() {
-    let url = "https://potato.net";
+    let _ = upsert_base().await;
+    let expected = TermDocRecord {
+        id: TermDocRecordId {
+            term: Rc::new("term1".into()),
+            doc_url: Rc::new("https://flafe.net".into()),
+        },
+        frequency: 6,
+        doc_length: 35,
+        tf_idf: 0.0,
+        tf: 0.17142857142857143,
+    };
     let db = get_db_connection().await;
-    let value = db
-        .query("SELECT id FROM document WHERE id.url='https://potato.net';")
+    let values: Vec<TermDocRecord> = db
+        .query("SELECT id.term,id.doc_url,frequency,doc_length,tf FROM inv_index WHERE id.term='term1' ;")
         .await
+        .unwrap()
+        .take(0)
         .unwrap();
-    dbg!(value);
+
+    assert_eq!(values[0], expected);
+}
+
+#[tokio::test]
+async fn retrive_not_exist() {
+    let db = get_db_connection().await;
+    let values: Vec<TermDocRecord> = db
+        .query("SELECT id.term,id.doc_url,doc_length,tf FROM inv_index WHERE id.term='balah' ;")
+        .await
+        .unwrap()
+        .take(0)
+        .unwrap();
+    assert!(values.is_empty());
+}
+
+async fn total_num(query: &str) -> surrealdb::Result<Vec<usize>> {
+    get_db_connection()
+        .await
+        .query(query)
+        .await
+        .unwrap()
+        .take(0)
+}
+
+#[tokio::test]
+async fn total_num_dcoument() {
+    let query = "SELECT VALUE count() FROM document;";
+    let total_doc = total_num(query).await;
+
+    assert!(total_doc.is_ok());
+    assert_eq!(total_doc.unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn total_num_inv_index() {
+    let query = "SELECT VALUE count() FROM inv_index;";
+    let total_doc = total_num(query).await;
+
+    assert!(total_doc.is_ok());
+    assert!(total_doc.unwrap()[0] > 0);
+}
+fn make_doc(freq: usize, tf_idf: f64) -> TermDocRecord {
+    TermDocRecord {
+        id: TermDocRecordId {
+            term: Rc::new("hello".to_string()),
+            doc_url: Rc::new("flafel".to_string()),
+        },
+        doc_length: 5,
+        frequency: freq,
+        tf_idf,
+        tf: 5.4,
+    }
+}
+#[tokio::test]
+async fn compare_docs() {
+    let doc1 = make_doc(5, 0.0);
+    let doc2 = make_doc(8, 0.0);
+    assert_eq!(doc1, doc2);
+}
+
+#[tokio::test]
+async fn number_docs_hashed() {
+    let mut docs = HashSet::new();
+    for x in 0..10 {
+        docs.insert(make_doc(x, 0.0));
+    }
+    assert_eq!(docs.len(), 1);
+}
+
+#[tokio::test]
+async fn pop_from_hash() {
+    let doc = make_doc(8, 0.0);
+    let mut table = HashSet::new();
+    table.insert(doc);
+}
+
+#[tokio::test]
+async fn check_add() {
+    let doc1 = make_doc(9, 1.0);
+    let doc2 = make_doc(5, 2.0);
+    let summed = doc1 + doc2;
+    assert_eq!(summed.tf_idf, 3.0);
+    assert_eq!(summed.frequency, 9);
+}
+//-------------------------------testing unify--------------------
+fn create_table(docs: Vec<TermDocRecord>) -> HashMap<Rc<String>, TermDocRecord> {
+    let mut table = HashMap::new();
+    for item in docs.into_iter() {
+        table.insert(item.get_url(), item);
+    }
+    table
+}
+
+#[test]
+fn test_unify_doc() {
+    let expected = make_doc(55, 6.0);
+    let doc1 = make_doc(55, 1.0);
+    let doc2 = make_doc(54, 2.0);
+    let doc3 = make_doc(89, 3.0);
+    let table = create_table(vec![doc1]);
+    let table2 = create_table(vec![doc2]);
+    let table3 = create_table(vec![doc3]);
+
+    let unified_docs = unify_docs(vec![table, table2, table3]);
+    assert_eq!(expected, *unified_docs.get(&expected.get_url()).unwrap());
+    assert_eq!(
+        expected.tf_idf,
+        unified_docs.get(&expected.get_url()).unwrap().tf_idf
+    );
+    assert_eq!(unified_docs.len(), 1);
+    assert_eq!(unified_docs.get(&expected.get_url()).unwrap().tf_idf, 6.0);
 }

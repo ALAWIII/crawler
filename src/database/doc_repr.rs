@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
+use std::ops::{Add, AddAssign};
+use std::rc::Rc;
 use std::sync::Arc;
 use surrealdb::RecordId;
-
 #[derive(Serialize, Debug, Eq, Clone)]
 pub struct Invindex {
     id: InvindexId,
@@ -90,8 +91,69 @@ pub struct ItemId {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct TermDocRecordId {
+    pub term: Rc<String>,
+    pub doc_url: Rc<String>,
+}
+
+fn default_zero() -> f64 {
+    0.0
+}
+
+#[derive(Deserialize, Debug)]
 pub struct TermDocRecord {
-    pub id: InvindexId,
+    pub id: TermDocRecordId,
     pub doc_length: usize,
+    pub frequency: usize,
+    #[serde(default = "default_zero")]
+    pub tf_idf: f64,
     pub tf: f64,
+}
+impl AddAssign for TermDocRecord {
+    fn add_assign(&mut self, rhs: Self) {
+        self.tf_idf += rhs.tf_idf;
+    }
+}
+impl Add for TermDocRecord {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        TermDocRecord {
+            tf_idf: self.tf_idf + rhs.tf_idf,
+            ..self
+        }
+    }
+}
+impl TermDocRecord {
+    pub fn set_tf_idf(&mut self, idf: f64) {
+        self.tf_idf = idf;
+    }
+    pub fn get_url(&self) -> Rc<String> {
+        self.id.doc_url.clone()
+    }
+    pub fn get_term(&self) -> Rc<String> {
+        self.id.term.clone()
+    }
+}
+impl Eq for TermDocRecord {}
+impl Hash for TermDocRecord {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl Hash for TermDocRecordId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.doc_url.hash(state);
+    }
+}
+impl PartialEq for TermDocRecord {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl PartialEq for TermDocRecordId {
+    fn eq(&self, other: &Self) -> bool {
+        self.doc_url == other.doc_url
+    }
 }
