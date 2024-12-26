@@ -48,12 +48,12 @@ pub fn get_args() -> CResult<Config> {
                 .long_help("you must provide a valid url that will be used in order to start fetching and crawling!"),
         ).arg(
             Arg::new("query")
-            .short('q')
-            .long("query")
-            .required(true)
-            .num_args(1)
-            .value_name("QUERY TEXT")
-            .long_help("text query to search within the documents and retrive the related once"))
+                .short('q')
+                .long("query")
+                .required(true)
+                .num_args(1)
+                .value_name("QUERY TEXT")
+                .long_help("text query to search within the documents and retrive the related once"))
         .arg(
             Arg::new("max_docs")
             .short('m')

@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 type T = HashMap<Rc<String>, TermDocRecord>;
 
+// iterates over a vector of hashmaps that represent doc_url : TermDocRecord
 pub fn unify_docs(mut words_docs: Vec<T>) -> T {
     let mut word = words_docs.pop().unwrap();
 
@@ -13,6 +14,8 @@ pub fn unify_docs(mut words_docs: Vec<T>) -> T {
     word
 }
 
+/// used to combine similar records by ``k`` , either adding existing similar records or
+/// inserting a record into the main w1 ,in order to unify and return them for comparison
 fn combine_docs(w1: &mut T, w2: T) {
     for (k, v) in w2 {
         if let Some(term_doc) = w1.get_mut(&k) {

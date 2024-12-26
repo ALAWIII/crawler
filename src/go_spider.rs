@@ -1,9 +1,12 @@
-use super::{fetch_pages, parse_pages, valid_url_format, UrlData, CPU_NUMBER};
-use crate::get_db_connection;
-use crate::{page_utils::analyze_pages, CResult, Config};
+use crate::TermDocRecord;
+
+use super::{
+    fetch_pages, get_db_connection, page_utils::analyze_pages, parse_pages, qurey_database,
+    valid_url_format, CResult, Config, UrlData, CPU_NUMBER,
+};
+
 use std::time::Duration;
 use tokio::sync::mpsc::channel;
-//use url::Url;
 
 pub async fn start_process(config: Config) -> CResult<()> {
     let _ = get_db_connection().await;
@@ -11,7 +14,7 @@ pub async fn start_process(config: Config) -> CResult<()> {
     let (snd2, rcv2) = channel(*CPU_NUMBER); // for pool B
     let (snd3, rcv3) = channel(*CPU_NUMBER); // for pool C
     let initial_url = valid_url_format(config.get_url())?;
-
+    // starts to fetch and download the pages
     let pag = tokio::spawn(async move {
         fetch_pages(snd1, rcv2)
             .await
@@ -19,6 +22,7 @@ pub async fn start_process(config: Config) -> CResult<()> {
     });
     snd2.send(initial_url).await?; // critical for sending the inital crawling url , must be awaited to garuntee it will start with it
     let cloned_snd2 = snd2.clone();
+    // for transforming the recived pages into the correct format
     let pages_parser = tokio::spawn(async {
         parse_pages(cloned_snd2, snd3, rcv1)
             .await
@@ -34,5 +38,17 @@ pub async fn start_process(config: Config) -> CResult<()> {
         drop(snd2);
     });
     tokio::join!(pag, pages_parser, page_analyzing); // this will be joined with the other major tasks
+    let list_docs = qurey_database(&config.query).await;
+    print_docs(list_docs, config.max_doc);
+
     Ok(())
+}
+
+fn print_docs(mut docs: Vec<TermDocRecord>, number_docs_needed: usize) {
+    let mut i = 0;
+    while !docs.is_empty() && i < number_docs_needed {
+        let doc = docs.pop().unwrap();
+        println!("{}", doc.get_url());
+        i += 1
+    }
 }

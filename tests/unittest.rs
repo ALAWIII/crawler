@@ -573,3 +573,16 @@ fn test_unify_doc() {
     assert_eq!(unified_docs.len(), 1);
     assert_eq!(unified_docs.get(&expected.get_url()).unwrap().tf_idf, 6.0);
 }
+//------------------------testing ordering a vec of TermDocRecord---------------
+
+#[test]
+fn sorting_documents_tf_idf() {
+    let doc1 = make_doc(5, 1.0);
+    let doc2 = make_doc(5, 2.0);
+    let doc3 = make_doc(5, 3.0);
+    let doc4 = make_doc(5, 4.0);
+    let mut table = [&doc4, &doc3, &doc2, &doc1];
+    table.sort();
+    assert_eq!(table, [&doc1, &doc2, &doc3, &doc4]);
+    assert_eq!(table[0].tf_idf, 1.0);
+}

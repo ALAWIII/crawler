@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::hash::Hash;
 use std::ops::{Add, AddAssign};
 use std::rc::Rc;
@@ -121,6 +122,19 @@ impl Add for TermDocRecord {
             tf_idf: self.tf_idf + rhs.tf_idf,
             ..self
         }
+    }
+}
+
+impl Ord for TermDocRecord {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.tf_idf
+            .partial_cmp(&other.tf_idf)
+            .unwrap_or(Ordering::Equal)
+    }
+}
+impl PartialOrd for TermDocRecord {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 impl TermDocRecord {

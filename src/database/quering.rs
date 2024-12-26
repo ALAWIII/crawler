@@ -1,5 +1,6 @@
 use super::TermDocRecord;
 use crate::get_db_connection;
+use crate::unify_docs;
 use libm::log10;
 use std::{
     collections::{HashMap, HashSet},
@@ -13,14 +14,19 @@ fn calculate_idf(total_docs: f64, df: f64) -> f64 {
     log10(total_docs / (1.0 + df))
 }
 
-pub async fn qurey_database(query: &str) {
+pub async fn qurey_database(query: &str) -> Vec<TermDocRecord> {
     let query_tokenized = tokenize_query(query);
     let number_documents = get_number_documents_stored().await as f64;
     let words_docs = get_words_docs(query_tokenized, number_documents).await;
-    todo!("calling unify_docs and ranking the results , writing ordering for TermDocId")
+    let doc_terms = unify_docs(words_docs);
+    let mut list_docs: Vec<TermDocRecord> = doc_terms.into_values().collect();
+    list_docs.sort();
+    list_docs
 }
 
 /// returns a list of tables that consist of doc_url : TermDoc container
+///
+/// consumes the query tokens (words) !!
 async fn get_words_docs(
     query_tokenized: HashSet<String>,
     total_docs: f64,
@@ -44,6 +50,7 @@ async fn get_words_docs(
     term_doc
 }
 
+/// cleans and tokinizes the query text
 fn tokenize_query(query: &str) -> HashSet<String> {
     query
         .split(|c: char| !c.is_alphabetic())
@@ -51,6 +58,8 @@ fn tokenize_query(query: &str) -> HashSet<String> {
         .map(move |token| token.to_owned())
         .collect()
 }
+
+/// returns the number of doc_url stored in the whole database!!
 async fn get_number_documents_stored() -> usize {
     let tota_num_documents = "SELECT count() FROM document;";
     let total_num: surrealdb::Result<Vec<usize>> = get_db_connection()
