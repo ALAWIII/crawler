@@ -1,7 +1,6 @@
 use super::{CResult, UrlData, CPU_NUMBER};
-use crate::get_log_success;
+//use crate::get_log_success;
 use reqwest::{Client, Url};
-use std::io::Write;
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::{
     mpsc::{Receiver, Sender},
@@ -25,6 +24,12 @@ pub async fn fetch_pages(
 
     loop {
         tokio::select! {
+            _= shut_fetch.changed()=>{
+                if *shut_fetch.borrow(){
+                    println!("shutting down the fetching channel");
+                    return Ok(());
+                }
+            },
             Some(url) =rcv2.recv() =>{
                 let cloned_url = Arc::new(url);
                 // println!("{}", cloned_urls);
@@ -37,14 +42,7 @@ pub async fn fetch_pages(
                     fetch_data_helper(client_clone, cloned_snd1, cloned_url, permit);
                 };
             }
-            _= shut_fetch.changed()=>{
-                if *shut_fetch.borrow(){
-                    let mut log = get_log_success().lock_owned().await;
-                    writeln!(log,"shutting down fetch page")
-                        .expect("failed to write to log file");
-                    return Ok(());
-                }
-            }
+
         }
     }
 }
@@ -58,12 +56,8 @@ fn fetch_data_helper(
     tokio::spawn(async move {
         if let Ok(response) = client.get(url.as_str()).send().await {
             if let Ok(res) = response.text().await {
-                snd1.send(UrlData(url.clone(), res))
-                    .await
-                    .expect("failed to send the url and its data");
+                snd1.send(UrlData(url.clone(), res)).await.unwrap_or(());
             }
-
-            //println!("{}", cloned_urls)
             drop(permit);
         };
     });

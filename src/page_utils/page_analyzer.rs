@@ -1,12 +1,11 @@
 use crate::{
-    get_db_connection, get_log_failure, get_log_success, CResult, Document, DocumentId, Invindex,
-    InvindexId, UrlParsedData, CPU_NUMBER,
+    get_db_connection, CResult, Document, DocumentId, Invindex, InvindexId, UrlParsedData,
+    CPU_NUMBER,
 };
 use dashmap::DashMap;
 use rayon::iter::IntoParallelRefMutIterator;
 use rayon::{self, iter::ParallelIterator};
 use reqwest::Url;
-use std::io::Write;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -24,25 +23,22 @@ pub async fn analyze_pages(
 
     loop {
         tokio::select! {
+            _ = shut_analyze.changed()=>{
+                if *shut_analyze.borrow(){
+                    println!("shutting down the analysis channel");
+                    return Ok(());
+                }
+            },
             Some(UrlParsedData(url, page_text)) =rcv3.recv()=>{
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 tokio::spawn(async move {
                     let url_as_string = url.as_str().to_string();
                     let combined_tokens = combine_tokens(page_text, url)
-                        .await
-                        .expect("Failed to combine objects");
+                        .await.unwrap();
 
                     send_to_database(combined_tokens, url_as_string).await;
                     drop(permit);
                 });
-            },
-            _ = shut_analyze.changed()=>{
-                if *shut_analyze.borrow(){
-                    let mut log = get_log_success().lock_owned().await;
-                    writeln!(log ,"shutting down the analysis process")
-                        .expect("failed to write to log file");
-                    return Ok(());
-                }
             }
         }
     }
@@ -92,17 +88,8 @@ fn combine_tokens(
 /// migrates term and urls to the database into correct tables ,
 async fn send_to_database(combined_tokens: TableTerms, url_as_string: String) {
     let db = get_db_connection().await;
-    let mut log = get_log_failure().lock_owned().await;
     for (_, v) in combined_tokens.into_iter() {
-        let _: Option<()> = db
-            .create("inv_index")
-            .content(v)
-            .await
-            .unwrap_or_else(|err| {
-                writeln!(log, "failed to create a record : {:?}", err)
-                    .expect("failed to write to a log file");
-                Some(())
-            });
+        let _: Option<()> = db.create("inv_index").content(v).await.unwrap_or(Some(()));
     }
     // when finishes it sends the url as string to the document table.
     let _: Option<()> = db
@@ -111,9 +98,5 @@ async fn send_to_database(combined_tokens: TableTerms, url_as_string: String) {
             id: DocumentId { url: url_as_string },
         })
         .await
-        .unwrap_or_else(|err| {
-            writeln!(log, "failed to create a record : {:?}", err)
-                .expect("failed to write to a log file");
-            Some(())
-        });
+        .unwrap_or(Some(()));
 }

@@ -1,10 +1,7 @@
 use super::{
-    fetch_pages, get_db_connection, get_log_failure, page_utils::analyze_pages, parse_pages,
-    qurey_database, valid_url_format, CResult, Config, TermDocRecord, UrlData, UrlParsedData,
-    CPU_NUMBER,
+    fetch_pages, get_db_connection, page_utils::analyze_pages, parse_pages, qurey_database,
+    valid_url_format, CResult, Config, TermDocRecord, UrlData, UrlParsedData, CPU_NUMBER,
 };
-
-use std::io::Write;
 use std::time::Duration;
 use tokio::{
     sync::{
@@ -60,10 +57,8 @@ fn start_fetch_pages(
     shut_fetch: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let mut log_fail = get_log_failure().lock_owned().await;
         if let Err(e) = fetch_pages(snd1, rcv2, shut_fetch).await {
-            writeln!(log_fail, "Fetching pages task error: {:?}", e)
-                .expect("Failed writing to log");
+            println!("Fetching pages task error: {:?}", e);
             //eprintln!("Fetching pages task error: {:?}", e)
         };
     })
@@ -75,9 +70,8 @@ fn start_parse_pages(
     shut_parse: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let mut log_fail = get_log_failure().lock_owned().await;
         if let Err(e) = parse_pages(snd2, snd3, rcv1, shut_parse).await {
-            writeln!(log_fail, "Parsing pages task error: {:?}", e).expect("Failed writing to log");
+            println!("Parsing pages task error: {:?}", e);
         }
     })
 }
@@ -87,10 +81,8 @@ fn start_analyze_pages(
     shut_analyze: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     tokio::spawn(async {
-        let mut log_fail = get_log_failure().lock_owned().await;
         if let Err(e) = analyze_pages(rcv3, shut_analyze).await {
-            writeln!(log_fail, "Analyzing pages task error: {:?}", e)
-                .expect("Failed writing to log");
+            println!("Analyzing pages task error: {:?}", e);
         };
     })
 }

@@ -1,7 +1,6 @@
 use super::TermDocRecord;
-use crate::{get_db_connection, get_log_failure, unify_docs};
+use crate::{get_db_connection, unify_docs};
 use libm::log10;
-use std::io::Write;
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
@@ -35,14 +34,8 @@ async fn get_words_docs(
     let db = get_db_connection().await;
     let mut term_doc = vec![];
     for word in query_tokenized {
-        let response = db.query(QUERY).bind(("word", word.clone())).await;
-        if let Err(e) = response {
-            let mut log = get_log_failure().lock_owned().await;
-            writeln!(log, "failed to process the response from database: {:?}", e)
-                .expect("failed to write to log file");
-            continue;
-        }
-        let records: Vec<TermDocRecord> = response.unwrap().take(0).unwrap();
+        let mut response = db.query(QUERY).bind(("word", word.clone())).await.unwrap();
+        let records: Vec<TermDocRecord> = response.take(0).unwrap();
         if !records.is_empty() {
             let df = records.len() as f64;
             // if a query term is not in the database , its rarely happens

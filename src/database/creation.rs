@@ -1,6 +1,5 @@
-use crate::{get_log_failure, get_log_success};
+// use crate::{get_log_failure, get_log_success};
 use std::env;
-use std::io::Write;
 use std::sync::Arc;
 use surrealdb::{
     engine::local::{Db, RocksDb},
@@ -45,16 +44,8 @@ async fn connect_database() -> surrealdb::Result<Arc<Surreal<Db>>> {
 }
 
 async fn create_schema(connection: &Surreal<Db>) {
-    let mut log_succ = get_log_success().lock_owned().await;
-    let mut log_fail = get_log_failure().lock_owned().await;
     for query in QUERIES {
-        match connection.query(query).await {
-            Ok(_) => writeln!(log_succ, "successful executing query : {:?}", query)
-                .expect("failed writing to log file"),
-
-            Err(e) => writeln!(log_fail, "failed executing query : {:?}", e)
-                .expect("failed writing to log file"),
-        }
+        connection.query(query).await;
     }
 }
 /// initializes the database connection or returning it if it was already established before.

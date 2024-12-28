@@ -3,12 +3,11 @@
 //! sending the url's back to the get_pages function via the channel
 use super::{valid_url_format, UrlData, UrlParsedData, CPU_NUMBER};
 
-use crate::{get_log_failure, get_log_success, CResult};
+use crate::CResult;
 use once_cell::sync::Lazy;
 use reqwest::Url;
 use scraper::{node::Text, Html};
 use std::collections::HashSet;
-use std::io::Write;
 use std::sync::Arc;
 use tokio::sync::{
     mpsc::{Receiver, Sender},
@@ -35,9 +34,13 @@ pub async fn parse_pages(
     let semaphore = Arc::new(Semaphore::new(*CPU_NUMBER));
     loop {
         tokio::select! {
-
+            _= shut_parse.changed()=>{
+                if *shut_parse.borrow(){
+                    println!{"shutting down the parsing channel"};
+                    break;
+                }
+            },
             Some(urldata) = rcv1.recv() =>{
-                let mut log= get_log_failure().lock_owned().await;
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let cloned_snd2 = snd2.clone();
                 let cloned_snd3 = snd3.clone();
@@ -46,22 +49,11 @@ pub async fn parse_pages(
                     cloned_snd3
                         .send(url_parsed_data)
                         .await
-                        .map_err(|e| {
-                            writeln!(log,"error sending to pool 3: {:?}", e)
-                                .expect("failed to write to log file");
-                        })
                         .ok(); // Consume the Result to satisfy type checks
                      drop(permit);
                 });
             }
-            _= shut_parse.changed()=>{
-                if *shut_parse.borrow(){
-                    let mut log = get_log_success().lock_owned().await;
-                    writeln!{log,"shutting down the parsing channel"}
-                        .expect("failed to write to log file");
-                    break;
-                }
-            },
+
         };
     }
 
@@ -102,9 +94,7 @@ pub fn text_filter(mut urldata: UrlData, snd2: Sender<Url>) -> UrlParsedData {
                         tokio::spawn(async move {
                             // potentinal skippin and performance drawback
                             if let Err(e) = cloned_snd2.send(u).await {
-                                let mut log = get_log_failure().lock_owned().await;
-                                writeln!(log, "sending url to pool A: {:?}", e)
-                                    .expect("Failed to write to a log file");
+                                //println!("sending url to pool A: {:?}", e);
                             };
                         });
                     })
