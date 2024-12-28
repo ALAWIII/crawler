@@ -44,7 +44,7 @@ Or compile it by yourself :
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone [<repository-url>](https://github.com/ALAWIII/crawler.git)
    ```
 2. Build the project:
    ```bash
