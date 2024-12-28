@@ -1,13 +1,16 @@
 use crawler::{
-    fetch_pages, get_db_connection, start_process, text_filter, unify_docs, valid_url_format,
-    CResult, Config, Document, DocumentId, Invindex, InvindexId, ItemId, TermDocRecord,
-    TermDocRecordId, UrlData, UrlParsedData,
+    fetch_pages, get_db_connection, parse_pages, start_process, text_filter, unify_docs,
+    valid_url_format, CResult, Config, Document, DocumentId, Invindex, InvindexId, ItemId,
+    TermDocRecord, TermDocRecordId, UrlData, UrlParsedData,
 };
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use reqwest::Url;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
+use std::env;
+use std::fs::{create_dir_all, File};
+use std::io::{BufWriter, Write};
 use std::sync::atomic::AtomicUsize;
 use std::{
     collections::HashSet,
@@ -16,9 +19,10 @@ use std::{
     time::Duration,
 };
 use tokio::sync::mpsc::channel;
-
+use tokio::sync::watch;
 static URL: &str = "https://en.wikipedia.org/wiki/Alan_Turing";
 
+// for getting the doc texts!
 async fn get_pages_raw_text(link: &str) -> String {
     reqwest::get(link).await.unwrap().text().await.unwrap()
 }
@@ -42,26 +46,57 @@ async fn start_process_check() {
     println!("done")
 }
 
+// testing fetch pages logic
 #[tokio::test]
-async fn check_pages() {
+async fn fetch_pages_logic() {
     let (snd1, mut rcv1) = channel(10);
     let (snd2, mut rcv2) = channel(10);
     let url = Url::parse(URL).unwrap();
-
+    let (shut_sx, shut_rx) = watch::channel(false);
+    let shit = shut_rx.clone();
     let get_pages_task = tokio::spawn(async move {
-        fetch_pages(snd1.clone(), rcv2)
+        fetch_pages(snd1.clone(), rcv2, shit)
             .await
             .expect("failed continue excecuting")
     });
     snd2.send(url.clone()).await.expect("failed to sending msg");
-    drop(snd2);
-    let response = rcv1.recv().await.expect("failed to receive msg");
 
+    let response = rcv1.recv().await.expect("failed to receive msg");
+    shut_sx.send(true);
+    let value = *shut_rx.borrow();
+    dbg!(value);
     get_pages_task.await.expect("get_pages task failed");
     //println!("{}", response.0);
     assert_eq!(url.as_str(), response.get_url().as_str());
 }
 
+//testing page_parsing logic
+#[tokio::test]
+async fn page_parsing_stop() {
+    let (snd1, rcv1) = channel(12);
+    let (snd2, rcv2) = channel::<Url>(12);
+    let (snd3, mut rcv3) = channel::<UrlParsedData>(12);
+    let (shut_snd, shut_rcv) = watch::channel(false);
+
+    let txt = get_pages_raw_text(URL).await;
+    let expected_url_parsed_data = text_filter(
+        UrlData(Arc::new(Url::parse(&URL).unwrap()), txt.clone()),
+        snd2.clone(),
+    );
+    let url_data = UrlData(Arc::new(Url::parse(&URL).unwrap()), txt);
+    snd1.send(url_data.clone()).await;
+
+    let parse_handle = tokio::spawn(async move {
+        parse_pages(snd2, snd3, rcv1, shut_rcv).await;
+    });
+
+    let txto = rcv3.recv().await.unwrap().1;
+    shut_snd.send(true);
+    assert_eq!(txto, expected_url_parsed_data.1);
+    parse_handle.await;
+    assert!(*shut_snd.borrow());
+    //dbg!(txto);
+}
 //---------------------------------------
 #[tokio::test]
 async fn parse_document1() {
@@ -425,9 +460,8 @@ async fn upsert_base() -> CResult<()> {
     //assert!(value.is_ok());
     Ok(())
 }
-#[tokio::test]
-async fn insert_url_doc() {
-    let url = "https://potato.net";
+
+async fn insert_url_doc(url: &str) {
     let db = get_db_connection().await;
     let value: surrealdb::Result<Vec<ItemId>> = db
         .upsert("document")
@@ -438,6 +472,14 @@ async fn insert_url_doc() {
         })
         .await;
     assert!(value.is_ok());
+}
+
+async fn create_docs() {
+    let mut url = "https://potato.net".to_string();
+    for i in 0..5 {
+        url.push_str(&format!("{}{}", url, i));
+        insert_url_doc(&url).await;
+    }
 }
 //--------------------------testing the deserilaization----------------
 #[tokio::test]
@@ -492,6 +534,25 @@ async fn total_num_dcoument() {
 
     assert!(total_doc.is_ok());
     assert_eq!(total_doc.unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn total_num_doc() {
+    create_docs().await;
+    let query = "RETURN( select Value count() FROM document GROUP ALL )[0].count OR 0;";
+    let total_doc = total_num(query).await;
+    dbg!(&total_doc);
+    assert!(total_doc.is_ok());
+    assert_eq!(total_doc.unwrap()[0], 5);
+}
+#[tokio::test]
+async fn total_num_doc_zero() {
+    //create_docs().await;
+    let query = "RETURN( select Value count() FROM document GROUP ALL )[0].count OR 0;";
+    let total_doc = total_num(query).await;
+    dbg!(&total_doc);
+    assert!(total_doc.is_ok());
+    assert_eq!(total_doc.unwrap()[0], 0);
 }
 
 #[tokio::test]
@@ -585,4 +646,24 @@ fn sorting_documents_tf_idf() {
     table.sort();
     assert_eq!(table, [&doc1, &doc2, &doc3, &doc4]);
     assert_eq!(table[0].tf_idf, 1.0);
+}
+//-------------------testing file logs creation--------------
+
+fn create_log_file(kind_file: &str) -> BufWriter<File> {
+    let exe_path = env::current_exe().unwrap();
+    let log_dir = exe_path.parent().unwrap().join("logs");
+    if !log_dir.exists() {
+        // creates the logs directory
+        create_dir_all(&log_dir).unwrap();
+    }
+    let log = log_dir.join(kind_file);
+    let file = File::create(log).unwrap();
+    BufWriter::new(file)
+}
+
+#[test]
+fn create_log_success() {
+    let mut buf = create_log_file("log_suc.txt");
+
+    assert!(write!(&mut buf, "hello").is_ok());
 }

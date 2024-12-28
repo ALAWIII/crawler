@@ -10,6 +10,7 @@ pub fn valid_url_format(url: &str) -> CResult<Url> {
     Ok(parsed)
 }
 
+#[derive(Clone)]
 pub struct UrlData(pub Arc<Url>, pub String);
 
 impl UrlData {

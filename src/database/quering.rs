@@ -1,7 +1,7 @@
 use super::TermDocRecord;
-use crate::get_db_connection;
-use crate::unify_docs;
+use crate::{get_db_connection, get_log_failure, unify_docs};
 use libm::log10;
+use std::io::Write;
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
@@ -14,6 +14,7 @@ fn calculate_idf(total_docs: f64, df: f64) -> f64 {
     log10(total_docs / (1.0 + df))
 }
 
+/// gets all records that is related to our query ;
 pub async fn qurey_database(query: &str) -> Vec<TermDocRecord> {
     let query_tokenized = tokenize_query(query);
     let number_documents = get_number_documents_stored().await as f64;
@@ -34,8 +35,14 @@ async fn get_words_docs(
     let db = get_db_connection().await;
     let mut term_doc = vec![];
     for word in query_tokenized {
-        let mut response = db.query(QUERY).bind(("word", word.clone())).await.unwrap();
-        let records: Vec<TermDocRecord> = response.take(0).unwrap();
+        let response = db.query(QUERY).bind(("word", word.clone())).await;
+        if let Err(e) = response {
+            let mut log = get_log_failure().lock_owned().await;
+            writeln!(log, "failed to process the response from database: {:?}", e)
+                .expect("failed to write to log file");
+            continue;
+        }
+        let records: Vec<TermDocRecord> = response.unwrap().take(0).unwrap();
         if !records.is_empty() {
             let df = records.len() as f64;
             // if a query term is not in the database , its rarely happens
@@ -61,21 +68,14 @@ fn tokenize_query(query: &str) -> HashSet<String> {
 
 /// returns the number of doc_url stored in the whole database!!
 async fn get_number_documents_stored() -> usize {
-    let tota_num_documents = "SELECT count() FROM document;";
-    let total_num: surrealdb::Result<Vec<usize>> = get_db_connection()
+    let tota_num_documents =
+        "RETURN( SELECT VALUE count() FROM document GROUP ALL )[0].count OR 0;";
+    let total_num: Vec<usize> = get_db_connection()
         .await
         .query(tota_num_documents)
         .await
         .unwrap()
-        .take(0);
-    match total_num {
-        Ok(v) => {
-            if !v.is_empty() {
-                v[0]
-            } else {
-                0
-            }
-        }
-        _ => 0,
-    }
+        .take(0)
+        .unwrap_or(vec![0]);
+    *total_num.first().unwrap()
 }

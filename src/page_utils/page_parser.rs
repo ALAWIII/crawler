@@ -1,18 +1,19 @@
 //! page parser for extracting the text and urls (pool B)
 //! combining all the text then sending it to the analysis and storage pool via the communication channel
 //! sending the url's back to the get_pages function via the channel
-use super::valid_url_format;
-use once_cell::sync::Lazy;
+use super::{valid_url_format, UrlData, UrlParsedData, CPU_NUMBER};
 
-use super::CPU_NUMBER;
-use super::{UrlData, UrlParsedData};
-use crate::CResult;
+use crate::{get_log_failure, get_log_success, CResult};
+use once_cell::sync::Lazy;
 use reqwest::Url;
 use scraper::{node::Text, Html};
 use std::collections::HashSet;
+use std::io::Write;
 use std::sync::Arc;
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::Semaphore;
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    {watch, Semaphore},
+};
 
 static FORBIDDEN: Lazy<HashSet<&str>> = Lazy::new(|| {
     HashSet::from([
@@ -29,24 +30,41 @@ pub async fn parse_pages(
     snd2: Sender<Url>,
     snd3: Sender<UrlParsedData>,
     mut rcv1: Receiver<UrlData>,
+    mut shut_parse: watch::Receiver<bool>,
 ) -> CResult<()> {
     let semaphore = Arc::new(Semaphore::new(*CPU_NUMBER));
+    loop {
+        tokio::select! {
 
-    while let Some(urldata) = rcv1.recv().await {
-        let permit = semaphore.clone().acquire_owned().await.unwrap();
-
-        let cloned_snd2 = snd2.clone();
-        let cloned_snd3 = snd3.clone();
-        tokio::spawn(async move {
-            let url_parsed_data = text_filter(urldata, cloned_snd2);
-            cloned_snd3
-                .send(url_parsed_data)
-                .await
-                .map_err(|e| eprintln!("error sending to pool 3: {:?}", e))
-                .ok(); // Consume the Result to satisfy type checks
-            drop(permit);
-        });
+            Some(urldata) = rcv1.recv() =>{
+                let mut log= get_log_failure().lock_owned().await;
+                let permit = semaphore.clone().acquire_owned().await.unwrap();
+                let cloned_snd2 = snd2.clone();
+                let cloned_snd3 = snd3.clone();
+                tokio::spawn(async move {
+                    let url_parsed_data = text_filter(urldata, cloned_snd2);
+                    cloned_snd3
+                        .send(url_parsed_data)
+                        .await
+                        .map_err(|e| {
+                            writeln!(log,"error sending to pool 3: {:?}", e)
+                                .expect("failed to write to log file");
+                        })
+                        .ok(); // Consume the Result to satisfy type checks
+                     drop(permit);
+                });
+            }
+            _= shut_parse.changed()=>{
+                if *shut_parse.borrow(){
+                    let mut log = get_log_success().lock_owned().await;
+                    writeln!{log,"shutting down the parsing channel"}
+                        .expect("failed to write to log file");
+                    break;
+                }
+            },
+        };
     }
+
     Ok(())
 }
 
@@ -84,7 +102,9 @@ pub fn text_filter(mut urldata: UrlData, snd2: Sender<Url>) -> UrlParsedData {
                         tokio::spawn(async move {
                             // potentinal skippin and performance drawback
                             if let Err(e) = cloned_snd2.send(u).await {
-                                eprintln!("sending url to pool A: {:?}", e)
+                                let mut log = get_log_failure().lock_owned().await;
+                                writeln!(log, "sending url to pool A: {:?}", e)
+                                    .expect("Failed to write to a log file");
                             };
                         });
                     })

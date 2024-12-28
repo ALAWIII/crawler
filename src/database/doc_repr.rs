@@ -88,6 +88,7 @@ impl DocumentId {
 }
 #[derive(Deserialize, Debug)]
 pub struct ItemId {
+    #[allow(dead_code)]
     id: RecordId,
 }
 
