@@ -14,7 +14,7 @@ pub async fn fetch_pages(
     mut shut_fetch: watch::Receiver<bool>,
 ) -> CResult<()> {
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(10) // max 10 connections per host that used to keep past connections for future reuse.
         .build()
         .unwrap();

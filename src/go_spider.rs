@@ -37,8 +37,11 @@ pub async fn start_process(config: Config) -> CResult<()> {
 
     //---------------------- finishing up and printing the top related documents-------
     let list_docs = qurey_database(&config.query).await;
-    print_docs(list_docs, config.max_doc);
-
+    if let Some(docs) = list_docs {
+        print_docs(docs, config.max_doc);
+        return Ok(());
+    }
+    println!("your query is not found in the database");
     Ok(())
 }
 

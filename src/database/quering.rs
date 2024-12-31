@@ -14,14 +14,17 @@ fn calculate_idf(total_docs: f64, df: f64) -> f64 {
 }
 
 /// gets all records that is related to our query ;
-pub async fn qurey_database(query: &str) -> Vec<TermDocRecord> {
+pub async fn qurey_database(query: &str) -> Option<Vec<TermDocRecord>> {
     let query_tokenized = tokenize_query(query);
     let number_documents = get_number_documents_stored().await as f64;
     let words_docs = get_words_docs(query_tokenized, number_documents).await;
+    if words_docs.is_empty() {
+        return None;
+    }
     let doc_terms = unify_docs(words_docs);
     let mut list_docs: Vec<TermDocRecord> = doc_terms.into_values().collect();
     list_docs.sort();
-    list_docs
+    Some(list_docs)
 }
 
 /// returns a list of tables that consist of doc_url : TermDoc container
@@ -34,7 +37,11 @@ async fn get_words_docs(
     let db = get_db_connection().await;
     let mut term_doc = vec![];
     for word in query_tokenized {
-        let mut response = db.query(QUERY).bind(("word", word.clone())).await.unwrap();
+        let mut response = db
+            .query(QUERY)
+            .bind(("word", word.clone()))
+            .await
+            .expect("failed to execute query");
         let records: Vec<TermDocRecord> = response.take(0).unwrap();
         if !records.is_empty() {
             let df = records.len() as f64;
@@ -51,11 +58,12 @@ async fn get_words_docs(
 }
 
 /// cleans and tokinizes the query text
-fn tokenize_query(query: &str) -> HashSet<String> {
+///
+pub fn tokenize_query(query: &str) -> HashSet<String> {
     query
         .split(|c: char| !c.is_alphabetic())
         .filter(|token| token.len() > 1)
-        .map(move |token| token.to_owned())
+        .map(move |token| token.to_lowercase())
         .collect()
 }
 

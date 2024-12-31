@@ -1,7 +1,7 @@
 use crawler::{
-    fetch_pages, get_db_connection, parse_pages, start_process, text_filter, unify_docs,
-    valid_url_format, CResult, Config, Document, DocumentId, Invindex, InvindexId, ItemId,
-    TermDocRecord, TermDocRecordId, UrlData, UrlParsedData,
+    fetch_pages, get_db_connection, parse_pages, start_process, text_filter, tokenize_query,
+    unify_docs, valid_url_format, CResult, Config, Document, DocumentId, Invindex, InvindexId,
+    ItemId, TermDocRecord, TermDocRecordId, UrlData, UrlParsedData,
 };
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -666,4 +666,17 @@ fn create_log_success() {
     let mut buf = create_log_file("log_suc.txt");
 
     assert!(write!(&mut buf, "hello").is_ok());
+}
+//---------------------------------------------
+
+#[test]
+fn tokenize_test() {
+    let tokinized = crate::tokenize_query("Allawiii flafel@potato.jo");
+    let expected = HashSet::from_iter([
+        "allawiii".to_string(),
+        "flafel".to_string(),
+        "potato".to_string(),
+        "jo".to_string(),
+    ]);
+    assert_eq!(tokinized, expected);
 }
