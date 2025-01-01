@@ -2,7 +2,7 @@
 name = "crawler"
 version = "0.1.1"
 edition = "2021"
-
+repository = "https://github.com/ALAWIII/crawler"
 [dependencies]
 clap = { version = "4.5.21", features = ["cargo"] }
 reqwest = { version = "0.12.9", features = ["blocking"] }
@@ -22,3 +22,8 @@ libm = "0.2.11"
 panic = "abort"
 opt-level = 3
 lto = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
