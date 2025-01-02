@@ -38,13 +38,13 @@ This will:
 4. Timeout after 20 seconds if the process takes too long.
 
 ### Installation
-download binary directly from the [Release Page](https://github.com/ALAWIII/crawler/releases/tag/v0.1.0)!
+download binary directly from the [Release Page](https://github.com/ALAWIII/crawler/releases)!
 
 Or compile it by yourself :
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/ALAWIII/crawler.git
+   git clone <repository-url>
    ```
 2. Build the project:
    ```bash
