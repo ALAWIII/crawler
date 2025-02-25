@@ -6,7 +6,7 @@ repository = "https://github.com/ALAWIII/crawler"
 [dependencies]
 clap = { version = "4.5.31", features = ["cargo"] }
 reqwest = { version = "0.12.12", features = ["blocking"] }
-scraper = "0.22.0"
+scraper = "0.23.1"
 tokio = { version = "1.43.0", features = ["full"] }
 rayon = "1.10.0"
 num_cpus = "1.16.0"
