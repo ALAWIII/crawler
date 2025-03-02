@@ -9,6 +9,7 @@
 //! - Search for a query text within the crawled documents.
 //! - Configure the maximum number of documents to retrieve.
 //! - Set a timeout for the crawling and query process.
+//! - only support english language for tokenization !
 //!
 //! ## Usage
 //!
@@ -62,6 +63,17 @@
 //! Contributions are welcome! Feel free to submit a pull request or open an issue.
 //!
 //! ---
+//! # BLUEPRINT
+//!
+//! built with performance in mind:
+//!
+//! 1. Tokio threadpools with channels between them to support I/O bound tasks.
+//! 2. Rayon for CPU bound tasks.
+//! 3. Database : Surrealdb.
+//!
+//! All those to support scalability , maintainability and isolation of the main process !
+//!
+//! ![crawler blueprint](./blueprint.svg)
 //!
 //! Happy crawling!
 mod interface;
