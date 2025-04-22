@@ -16,7 +16,7 @@ regex = "1.11.1"
 surrealdb = { version = "2.2.2", features = ["kv-rocksdb"] }
 serde = { version = "1.0.219", features = ["derive"] }
 dashmap = "6.1.0"
-libm = "0.2.11"
+libm = "0.2.13"
 
 [profile.release]
 panic = "abort"
