@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2021"
 repository = "https://github.com/ALAWIII/crawler"
 [dependencies]
-clap = { version = "4.5.42", features = ["cargo"] }
+clap = { version = "4.5.43", features = ["cargo"] }
 reqwest = { version = "0.12.22", features = ["blocking"] }
 scraper = "0.23.1"
 tokio = { version = "1.47.1", features = ["full"] }
