@@ -8,7 +8,7 @@ clap = { version = "4.5.44", features = ["cargo"] }
 reqwest = { version = "0.12.22", features = ["blocking"] }
 scraper = "0.23.1"
 tokio = { version = "1.47.1", features = ["full"] }
-rayon = "1.10.0"
+rayon = "1.11.0"
 num_cpus = "1.17.0"
 url = "2.5.4"
 once_cell = "1.21.3"
